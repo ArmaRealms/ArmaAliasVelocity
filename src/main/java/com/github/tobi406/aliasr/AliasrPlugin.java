@@ -2,9 +2,11 @@ package com.github.tobi406.aliasr;
 
 import com.moandjiezana.toml.Toml;
 import com.velocitypowered.api.command.CommandManager;
+import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
+import com.velocitypowered.api.proxy.ProxyServer;
 
 import org.slf4j.Logger;
 
@@ -28,7 +30,8 @@ import java.util.List;
 public class AliasrPlugin {
     private static AliasrPlugin instance;
 
-    private CommandManager commandManager;
+    private final ProxyServer server;
+    private final CommandManager commandManager;
     private Logger logger;
     private Toml config;
 
@@ -37,8 +40,9 @@ public class AliasrPlugin {
     List<String> registeredCommands = new ArrayList<>();
 
     @Inject
-    public AliasrPlugin(CommandManager commandManager, Logger logger, @DataDirectory final Path folder) {
-        this.commandManager = commandManager;
+    public AliasrPlugin(ProxyServer server, Logger logger, @DataDirectory final Path folder) {
+        this.server = server;
+        this.commandManager = server.getCommandManager();
         this.logger = logger;
         this.folder = folder;
 
@@ -84,14 +88,16 @@ public class AliasrPlugin {
     }
 
     public void registerCommands() {
-        this.commandManager.register("aliasr", new AliasrCommand());
+        CommandMeta aliasrMeta = this.commandManager.metaBuilder("aliasr").plugin(this).build();
+        this.commandManager.register(aliasrMeta, new AliasrCommand());
         this.registeredCommands.add("aliasr");
         this.logger.info("Registered plugin command \"aliasr\"");
 
         List<HashMap<String, String>> aliases = this.config.getList("aliases");
 
         aliases.forEach(hashMap -> {
-            this.commandManager.register(hashMap.get("name"), new SimpleCommand() {
+            CommandMeta meta = this.commandManager.metaBuilder(hashMap.get("name")).plugin(this).build();
+            this.commandManager.register(meta, new SimpleCommand() {
                 private String args = hashMap.get("args");
                 private String command = hashMap.get("command");
                 private String commandArgs = hashMap.get("commandArgs");
@@ -100,7 +106,7 @@ public class AliasrPlugin {
                 public void execute(Invocation invocation) {
                     String joinedArgs = String.join(" ", invocation.arguments());
 
-                    AliasrPlugin.getInstance().commandManager.executeAsync(
+                    AliasrPlugin.getInstance().server.getCommandManager().executeAsync(
                         invocation.source(),
                         this.command
                             + (args.length() > 0 ? (" " + joinedArgs.replaceAll(this.args, this.commandArgs)) : "")
